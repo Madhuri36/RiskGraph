@@ -1,23 +1,98 @@
-# Data & environment
-*.env
+
+# Environment variables and secrets
 .env
-data/
-*.gz
-*.parquet
-*.csv
+.env.*
+!.env.example
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
 .venv/
 venv/
+env/
+ENV/
 
-# Jupyter
+# Python testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# Jupyter Notebook
 .ipynb_checkpoints/
 
-# OS/editor
-.DS_Store
+# IDEs and editors
 .vscode/
 .idea/
+*.sublime-workspace
+*.sublime-project
 
-# Docker volumes are managed by Docker itself, not git
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Data files and generated outputs
+data/raw/
+data/processed/
+data/interim/
+outputs/
+artifacts/
+*.parquet
+*.csv
+*.jsonl
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log/
+
+# Kafka local data
+kafka-data/
+
+# MinIO / RustFS local data
+minio-data/
+rustfs-data/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Local configuration
+config.local.yaml
+config.local.yml
