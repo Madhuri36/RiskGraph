@@ -1,7 +1,7 @@
 # RiskGraph — Setup Guide
 
 This repo uses Docker Compose so all 4 team members run the **exact same environment** —
-no "works on my machine" problems.
+
 
 ## Prerequisites (everyone installs this once)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
