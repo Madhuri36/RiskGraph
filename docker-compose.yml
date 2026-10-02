@@ -47,31 +47,33 @@ services:
       - "9000:9000"   # S3 API
       - "9001:9001"   # Web console
     environment:
-      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_USER: minioadmin 
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
       - minio-data:/data
 
   # --- Spark (Member 3: Risk Analytics / GraphFrames) ---
   spark-master:
-    image: bitnami/spark:3.5
+    image: apache/spark:3.5.9-scala2.12-java17-python3-ubuntu
     container_name: spark-master
-    environment:
-      - SPARK_MODE=master
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
     ports:
-      - "8080:8080"   # Spark master UI
-      - "7077:7077"   # Spark master port
+      - "8080:8080"
+      - "7077:7077"
 
   spark-worker:
-    image: bitnami/spark:3.5
+    image: apache/spark:3.5.9-scala2.12-java17-python3-ubuntu
     container_name: spark-worker
     depends_on:
       - spark-master
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=2G
-      - SPARK_WORKER_CORES=2
-
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 2
 volumes:
   minio-data:
