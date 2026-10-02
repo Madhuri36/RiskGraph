@@ -1,79 +1,121 @@
-version: "3.8"
 
 services:
-  # --- Kafka + Zookeeper (Member 1: Ingestion) ---
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.0
-    container_name: zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-
+  # 1. Apache Kafka
   kafka:
-    image: confluentinc/cp-kafka:7.6.0
-    container_name: kafka
-    depends_on:
-      - zookeeper
+    image: apache/kafka:3.8.1
+    container_name: riskgraph-kafka
     ports:
       - "9092:9092"
+      - "29092:29092"
+      - "9093:9093"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-
-  # Simple UI to see Kafka topics/messages in a browser instead of the CLI
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    depends_on:
-      - kafka
-    ports:
-      - "8085:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-
-  # --- MinIO (Member 2: Storage / data lake, S3-compatible) ---
-  minio:
-    image: minio/minio:latest
-    container_name: minio
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
-    environment:
-      MINIO_ROOT_USER: minioadmin 
-      MINIO_ROOT_PASSWORD: minioadmin
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     volumes:
-      - minio-data:/data
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
 
-  # --- Spark (Member 3: Risk Analytics / GraphFrames) ---
-  spark-master:
-    image: apache/spark:3.5.9-scala2.12-java17-python3-ubuntu
-    container_name: spark-master
-    command: >
-      /opt/spark/bin/spark-class
-      org.apache.spark.deploy.master.Master
+  # 2. RustFS - S3-compatible object storage
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: riskgraph-rustfs
+    command: ["/data"]
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: riskgraph
+      RUSTFS_SECRET_KEY: riskgraph_local_password
     ports:
-      - "8080:8080"
-      - "7077:7077"
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs_data:/data
 
+  # 3. Apache Spark Master
+  spark-master:
+    image: apache/spark:3.5.7-python3
+    container_name: riskgraph-spark-master
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.master.Master
+      - --host
+      - spark-master
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    ports:
+      - "7077:7077"
+      - "8081:8080"
+
+  # 4. Apache Spark Worker
   spark-worker:
-    image: apache/spark:3.5.9-scala2.12-java17-python3-ubuntu
-    container_name: spark-worker
+    image: apache/spark:3.5.7-python3
+    container_name: riskgraph-spark-worker
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.worker.Worker
+      - spark://spark-master:7077
     depends_on:
       - spark-master
-    command: >
-      /opt/spark/bin/spark-class
-      org.apache.spark.deploy.worker.Worker
-      spark://spark-master:7077
     environment:
-      SPARK_WORKER_MEMORY: 2G
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_WORKER_MEMORY: 1G
       SPARK_WORKER_CORES: 2
+
+  # 5. FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: riskgraph-api
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIO_ENDPOINT: rustfs:9000
+      MINIO_ACCESS_KEY: riskgraph
+      MINIO_SECRET_KEY: riskgraph_local_password
+      MINIO_BUCKET: riskgraph
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/workspace
+    depends_on:
+      kafka:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+
+  # 6. Streamlit Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: riskgraph-dashboard
+    command: streamlit run app/dashboard/Home.py --server.address 0.0.0.0 --server.port 8501
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/workspace
+    depends_on:
+      - api
+
 volumes:
-  minio-data:
+  kafka_data:
+  rustfs_data:
