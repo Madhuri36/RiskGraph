@@ -1,25 +1,34 @@
-
 import os
-import requests
+from pathlib import Path
+from urllib.parse import unquote
+import networkx as nx
 import pandas as pd
-import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-import networkx as nx
-
-API_URL = os.getenv("API_URL", "http://api:8000")
-
+import requests
+import streamlit as st
+# The dashboard reads the processed Parquet files committed under app/dashboard/data/.
+# Set API_URL only if you intentionally want to use a separately hosted FastAPI service.
+API_URL = (os.getenv("API_URL", "") or "").rstrip("/")
+DATA_DIR = Path(__file__).resolve().parent / "data"
+DATASETS = {
+    "package_enriched": "package_enriched",
+    "graph_vertices": "graph_vertices",
+    "graph_edges": "graph_edges",
+    "graph_metrics": "graph_metrics",
+    "risk_scores": "risk_scores",
+    "cascade_summary": "cascade_summary",
+    "cascade_affected_nodes": "cascade_affected_nodes",
+}
 st.set_page_config(
     page_title="RiskGraph",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
 # ============================================================
 # DARK THEME
 # ============================================================
-
 C = {
     "bg": "#080B12",
     "sidebar": "#0B101A",
@@ -37,13 +46,10 @@ C = {
     "dependent": "#B28DFF",
     "plot": "#0B1220",
 }
-
 PLOT_TEMPLATE = "plotly_dark"
-
 # ============================================================
 # STYLE
 # ============================================================
-
 st.markdown(
     f"""
     <style>
@@ -60,16 +66,13 @@ st.markdown(
         --warning: {C["warning"]};
         --success: {C["success"]};
     }}
-
     html, body, [data-testid="stAppViewContainer"] {{
         background: radial-gradient(ellipse at 72% -8%, rgba(139,124,255,.11), transparent 34%), var(--bg) !important;
     }}
-
     .stApp {{
         background: var(--bg);
         color: var(--text);
     }}
-
     /* Space below Streamlit's top toolbar / Deploy area */
     .block-container {{
         max-width: 1480px;
@@ -78,7 +81,6 @@ st.markdown(
         padding-left: 2.6rem !important;
         padding-right: 2.6rem !important;
     }}
-
     /* Compact proper sidebar */
     [data-testid="stSidebar"] {{
         background: var(--sidebar) !important;
@@ -86,31 +88,26 @@ st.markdown(
         min-width: 220px !important;
         max-width: 220px !important;
     }}
-
     [data-testid="stSidebar"] > div:first-child {{
         padding: 1.35rem .85rem 1.25rem !important;
     }}
-
     .brand {{
         padding: .15rem .65rem 1.1rem;
         margin-bottom: 1rem;
         border-bottom: 1px solid var(--border);
     }}
-
     .brand-name {{
         color: var(--text);
         font-size: 1.2rem;
         font-weight: 800;
         letter-spacing: -.035em;
     }}
-
     .brand-sub {{
         color: var(--muted);
         font-size: .68rem;
         margin-top: .25rem;
         line-height: 1.45;
     }}
-
     .nav-label {{
         color: var(--muted);
         font-size: .62rem;
@@ -119,12 +116,10 @@ st.markdown(
         text-transform: uppercase;
         padding: 0 .65rem .45rem;
     }}
-
     /* Hide native radio circles so the navigation looks like a menu */
     [data-testid="stSidebar"] [role="radiogroup"] {{
         gap: 3px !important;
     }}
-
     [data-testid="stSidebar"] [role="radiogroup"] label {{
         background: transparent !important;
         border: 1px solid transparent !important;
@@ -133,33 +128,27 @@ st.markdown(
         min-height: 33px !important;
         margin: 0 !important;
     }}
-
     [data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {{
         display: none !important;
     }}
-
     [data-testid="stSidebar"] [role="radiogroup"] label p {{
         color: var(--muted) !important;
         font-size: .81rem !important;
         font-weight: 540 !important;
         margin: 0 !important;
     }}
-
     [data-testid="stSidebar"] [role="radiogroup"] label:hover {{
         background: var(--panel2) !important;
         border-color: var(--border) !important;
     }}
-
     [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
         background: rgba(139,124,255,.13) !important;
         border-color: rgba(139,124,255,.48) !important;
     }}
-
     [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{
         color: var(--text) !important;
         font-weight: 680 !important;
     }}
-
     .sidebar-footer {{
         border-top: 1px solid var(--border);
         margin-top: 1.15rem;
@@ -168,7 +157,6 @@ st.markdown(
         font-size: .66rem;
         line-height: 1.55;
     }}
-
     /* Page header */
     .page-kicker {{
         color: var(--accent);
@@ -178,7 +166,6 @@ st.markdown(
         text-transform: uppercase;
         margin-bottom: .48rem;
     }}
-
     .page-title {{
         color: var(--text);
         font-size: 2.45rem;
@@ -187,7 +174,6 @@ st.markdown(
         letter-spacing: -.045em;
         margin: 0;
     }}
-
     .page-subtitle {{
         color: var(--muted);
         max-width: 880px;
@@ -195,13 +181,11 @@ st.markdown(
         line-height: 1.62;
         margin-top: .65rem;
     }}
-
     .top-rule {{
         height: 1px;
         background: linear-gradient(90deg, var(--accent), var(--cyan) 38%, transparent);
         margin: 1.65rem 0 1.45rem;
     }}
-
     /* Dashboard cards */
     .metric-card {{
         background: var(--panel);
@@ -210,7 +194,6 @@ st.markdown(
         padding: .95rem 1rem;
         min-height: 91px;
     }}
-
     .metric-label {{
         color: var(--muted);
         font-size: .65rem;
@@ -218,7 +201,6 @@ st.markdown(
         letter-spacing: .09em;
         text-transform: uppercase;
     }}
-
     .metric-value {{
         color: var(--text);
         font-size: 1.58rem;
@@ -226,16 +208,13 @@ st.markdown(
         letter-spacing: -.035em;
         margin-top: .32rem;
     }}
-
     .metric-danger {{ color: #FF4D5F; }}
     .metric-warning {{ color: #FF9F43; }}
     .metric-success {{ color: #35D07F; }}
-
     .section {{
         margin-top: 1.85rem;
         margin-bottom: .75rem;
     }}
-
     .section-title {{
         color: var(--text);
         font-size: 1.1rem;
@@ -244,31 +223,26 @@ st.markdown(
         padding-left: .65rem;
         border-left: 3px solid var(--accent);\n        padding-top: .12rem;\n        padding-bottom: .12rem;
     }}
-
     .section-caption {{
         color: var(--muted);
         font-size: .79rem;
         margin-top: .22rem;
         line-height: 1.5;
     }}
-
     .panel {{
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 13px;
         padding: 1.15rem 1.2rem;
     }}
-
     .note {{
         color: var(--muted);
         font-size: .78rem;
         line-height: 1.6;
     }}
-
     .risk-high {{ color: #8B7CFF; font-weight: 750; }}
     .risk-medium {{ color: #FF9F43; font-weight: 750; }}
     .risk-low {{ color: #35D07F; font-weight: 750; }}
-
     .graph-legend {{
         display: flex;
         gap: 1.15rem;
@@ -277,7 +251,6 @@ st.markdown(
         font-size: .75rem;
         margin: .45rem 0 .85rem;
     }}
-
     .dot {{
         display: inline-block;
         width: 8px;
@@ -285,14 +258,12 @@ st.markdown(
         border-radius: 50%;
         margin-right: 5px;
     }}
-
     .stTextInput input,
     .stSelectbox div[data-baseweb="select"] > div {{
         background: var(--panel) !important;
         color: var(--text) !important;
         border-color: var(--border) !important;
     }}
-
     .stButton > button {{
         border-radius: 7px;
         border: 1px solid var(--border);
@@ -300,70 +271,57 @@ st.markdown(
         color: var(--text);
         font-size: .79rem;
     }}
-
     .stButton > button:hover {{
         border-color: var(--accent);
         color: var(--text);
     }}
-
     [data-testid="stAlert"] {{
         background: #043780 !important;
         border: 1px solid #025EC4 !important;
         border-left: 4px solid #00C5E8 !important;
         color: #EAF8FF !important;
     }}
-
     [data-testid="stMetric"] {{
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 10px;
     }}
-
-
     .brand-name {{
         background: linear-gradient(100deg, #F3F6FC 10%, #BDB5FF 65%, #55C8F2 100%);
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
     }}
-
     [data-testid="stExpander"] {{
         border: 1px solid var(--border) !important;
         border-radius: 12px !important;
         background: rgba(17,25,39,.72) !important;
         overflow: hidden;
     }}
-
     [data-testid="stExpander"] summary {{
         padding: .65rem .8rem !important;
     }}
-
     [data-testid="stExpander"] summary:hover {{
         color: var(--text) !important;
         background: rgba(139,124,255,.07) !important;
     }}
-
     [data-testid="stDataFrame"], [data-testid="stTable"] {{
         border: 1px solid var(--border);
         border-radius: 12px;
         overflow: hidden;
     }}
-
     .stTabs [data-baseweb="tab-list"] {{
         gap: .35rem;
         border-bottom: 1px solid var(--border);
     }}
-
     .stTabs [data-baseweb="tab"] {{
         border-radius: 8px 8px 0 0;
         padding: .65rem .9rem;
     }}
-
     .stTabs [aria-selected="true"] {{
         color: var(--text) !important;
         border-bottom-color: var(--accent) !important;
     }}
-
     [data-testid="stAlert"] p {{
         color: #F3F6FC !important;
     }}
@@ -375,7 +333,6 @@ st.markdown(
         color: #FFFFFF !important;
         box-shadow: none !important;
     }}
-
     [data-testid="stAlert"] p,
     [data-testid="stAlert"] div,
     [data-testid="stAlert"] span {{
@@ -387,46 +344,38 @@ st.markdown(
         max-width: 1600px;
         transition: padding .18s ease, max-width .18s ease;
     }}
-
     [data-testid="stSidebar"][aria-expanded="false"] {{
         min-width: 0 !important;
         max-width: 0 !important;
         border-right: 0 !important;
     }}
-
     [data-testid="stSidebar"][aria-expanded="false"] > div {{
         visibility: hidden !important;
     }}
-
     @media (max-width: 900px) {{
         [data-testid="stSidebar"] {{
             min-width: 205px !important;
             max-width: 205px !important;
         }}
-
         .block-container {{
             padding-left: 1.2rem !important;
             padding-right: 1.2rem !important;
             padding-top: 3.9rem !important;
         }}
-
         .page-title {{
             font-size: 2rem;
         }}
     }}
-
     @media (max-width: 650px) {{
         [data-testid="stSidebar"] {{
             min-width: 190px !important;
             max-width: 190px !important;
         }}
-
         .block-container {{
             padding-left: .85rem !important;
             padding-right: .85rem !important;
             padding-top: 3.5rem !important;
         }}
-
         .page-title {{
             font-size: 1.75rem;
         }}
@@ -435,80 +384,247 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 # ============================================================
-# API HELPERS
 # ============================================================
-
-def api_get(path, params=None, timeout=30):
-    try:
-        response = requests.get(
-            f"{API_URL}{path}",
-            params=params,
-            timeout=timeout,
-        )
-        if response.status_code == 404:
-            return None
-        response.raise_for_status()
-        return response.json()
-    except Exception as exc:
-        st.error(f"API request failed: {exc}")
+# DATA ACCESS
+# ============================================================
+@st.cache_data(ttl=600, show_spinner=False)
+def read_parquet_prefix(dataset_folder):
+    folder = DATA_DIR / dataset_folder
+    files = sorted(folder.rglob("*.parquet")) if folder.exists() else []
+    frames = []
+    for file_path in files:
+        try:
+            frames.append(pd.read_parquet(file_path))
+        except Exception as exc:
+            st.warning(f"Could not read dataset file {file_path.name}: {exc}")
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+def dataset(name):
+    return read_parquet_prefix(DATASETS[name])
+def normalize_risk(df):
+    if df.empty:
+        return df
+    df = df.copy()
+    if "package_name" not in df.columns and "id" in df.columns:
+        df["package_name"] = df["id"]
+    return df
+def normalize_cascade(df):
+    if df.empty:
+        return df
+    df = df.copy()
+    if "package_name" not in df.columns and "failed_package" in df.columns:
+        df["package_name"] = df["failed_package"]
+    return df
+def clean_value(value):
+    if value is None:
         return None
-
-
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    try:
+        return value.item()
+    except Exception:
+        return value
+def clean_row(row):
+    return {key: clean_value(value) for key, value in row.items()}
+@st.cache_data(ttl=600, show_spinner=False)
+def risk_data():
+    return normalize_risk(dataset("risk_scores"))
+@st.cache_data(ttl=600, show_spinner=False)
+def vertices_data():
+    return dataset("graph_vertices")
+@st.cache_data(ttl=600, show_spinner=False)
+def edges_data():
+    return dataset("graph_edges")
+@st.cache_data(ttl=600, show_spinner=False)
+def enriched_data():
+    return dataset("package_enriched")
+@st.cache_data(ttl=600, show_spinner=False)
+def cascade_summary_data():
+    return normalize_cascade(dataset("cascade_summary"))
+@st.cache_data(ttl=600, show_spinner=False)
+def cascade_affected_data():
+    return dataset("cascade_affected_nodes")
+@st.cache_resource
+def dependency_graph():
+    graph = nx.DiGraph()
+    edges = edges_data()
+    if not edges.empty and {"src", "dst"}.issubset(edges.columns):
+        for row in edges[["src", "dst"]].itertuples(index=False, name=None):
+            graph.add_edge(str(row[0]), str(row[1]))
+    return graph
+def direct_get(path, params=None):
+    params = params or {}
+    parts = [unquote(part) for part in path.strip("/").split("/") if part]
+    if not parts:
+        return {"name": "RiskGraph", "status": "running"}
+    if parts == ["overview"]:
+        risk = risk_data()
+        vertices = vertices_data()
+        edges = edges_data()
+        if risk.empty:
+            return None
+        levels = risk["risk_level"].astype(str).str.upper() if "risk_level" in risk.columns else pd.Series([], dtype=str)
+        observed = 0
+        if "has_github_observation" in risk.columns:
+            observed = int(risk["has_github_observation"].fillna(False).astype(bool).sum())
+        return {
+            "packages": int(risk["package_name"].nunique()) if "package_name" in risk.columns else 0,
+            "graph_nodes": int(len(vertices)),
+            "graph_edges": int(len(edges)),
+            "high_risk": int((levels == "HIGH").sum()),
+            "medium_risk": int((levels == "MEDIUM").sum()),
+            "low_risk": int((levels == "LOW").sum()),
+            "github_observed": observed,
+        }
+    if parts == ["risk", "distribution"]:
+        risk = risk_data()
+        if risk.empty or "risk_level" not in risk.columns:
+            return []
+        counts = risk["risk_level"].astype(str).str.upper().value_counts()
+        return [{"risk_level": str(level), "count": int(count)} for level, count in counts.items()]
+    if parts == ["risk", "top"]:
+        risk = risk_data()
+        if risk.empty:
+            return []
+        if "final_risk_score" in risk.columns:
+            risk = risk.sort_values("final_risk_score", ascending=False)
+        limit = max(1, min(int(params.get("limit", 20)), 100))
+        return [clean_row(row) for _, row in risk.head(limit).iterrows()]
+    if len(parts) >= 3 and parts[0] == "package" and parts[-1] in {"dependencies", "dependents"}:
+        package_name = "/".join(parts[1:-1])
+        depth = max(1, min(int(params.get("depth", 1)), 3))
+        graph = dependency_graph()
+        search_graph = graph if parts[-1] == "dependencies" else graph.reverse(copy=False)
+        visited = {package_name: 0}
+        if package_name in search_graph:
+            queue = [package_name]
+            while queue:
+                current = queue.pop(0)
+                current_depth = visited[current]
+                if current_depth >= depth:
+                    continue
+                for neighbor in search_graph.successors(current):
+                    if neighbor not in visited:
+                        visited[neighbor] = current_depth + 1
+                        queue.append(neighbor)
+        selected = set(visited)
+        nodes = [{"id": node, "depth": node_depth} for node, node_depth in visited.items()]
+        result_edges = [
+            {"source": src, "target": dst}
+            for src, dst in graph.edges()
+            if src in selected and dst in selected
+        ]
+        return {"package": package_name, "nodes": nodes, "edges": result_edges}
+    if len(parts) >= 2 and parts[0] == "package":
+        package_name = "/".join(parts[1:])
+        risk = risk_data()
+        if risk.empty or "package_name" not in risk.columns:
+            return None
+        rows = risk[risk["package_name"].astype(str) == package_name]
+        if rows.empty:
+            return None
+        result = clean_row(rows.iloc[0])
+        enriched = enriched_data()
+        if not enriched.empty and "package_name" in enriched.columns:
+            extra_rows = enriched[enriched["package_name"].astype(str) == package_name]
+            if not extra_rows.empty:
+                for key, value in clean_row(extra_rows.iloc[0]).items():
+                    if key not in result:
+                        result[key] = value
+        return result
+    if parts == ["cascade", "summary"]:
+        df = cascade_summary_data()
+        if df.empty:
+            return []
+        if "total_affected" in df.columns:
+            df = df.sort_values("total_affected", ascending=False)
+        return [clean_row(row) for _, row in df.iterrows()]
+    if len(parts) >= 2 and parts[0] == "cascade":
+        package_name = "/".join(parts[1:])
+        summary = cascade_summary_data()
+        if summary.empty or "package_name" not in summary.columns:
+            return None
+        rows = summary[summary["package_name"].astype(str) == package_name]
+        if rows.empty:
+            return None
+        affected = cascade_affected_data()
+        if not affected.empty:
+            if "failed_package" in affected.columns:
+                affected_rows = affected[affected["failed_package"].astype(str) == package_name]
+            elif "seed_package" in affected.columns:
+                affected_rows = affected[affected["seed_package"].astype(str) == package_name]
+            elif "package_name" in affected.columns:
+                affected_rows = affected[affected["package_name"].astype(str) == package_name]
+            else:
+                affected_rows = pd.DataFrame()
+        else:
+            affected_rows = pd.DataFrame()
+        return {
+            "summary": clean_row(rows.iloc[0]),
+            "affected_nodes": [clean_row(row) for _, row in affected_rows.iterrows()],
+        }
+    return None
+def api_get(path, params=None, timeout=30):
+    # Optional compatibility mode: use an externally hosted FastAPI if API_URL is set.
+    if API_URL:
+        try:
+            response = requests.get(f"{API_URL}{path}", params=params, timeout=timeout)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return response.json()
+        except Exception as exc:
+            st.error(f"API request failed: {exc}")
+            return None
+    try:
+        return direct_get(path, params=params)
+    except Exception as exc:
+        st.error(
+            "Could not load RiskGraph data from the local processed Parquet files. "
+            "Check that app/dashboard/data contains the required dataset folders. "
+            f"Details: {exc}"
+        )
+        return None
 @st.cache_data(ttl=60)
 def get_overview():
     return api_get("/overview")
-
-
 @st.cache_data(ttl=60)
 def get_distribution():
     return api_get("/risk/distribution")
-
-
 @st.cache_data(ttl=60)
 def get_top_risk(limit=500):
     return api_get("/risk/top", {"limit": limit})
-
-
 @st.cache_data(ttl=60)
 def get_package(name):
     return api_get(f"/package/{name}")
-
-
 @st.cache_data(ttl=60)
 def get_dependencies(name, depth):
     return api_get(f"/package/{name}/dependencies", {"depth": depth})
-
-
 @st.cache_data(ttl=60)
 def get_dependents(name, depth):
     return api_get(f"/package/{name}/dependents", {"depth": depth})
-
-
 @st.cache_data(ttl=60)
 def get_cascade_summary():
     return api_get("/cascade/summary")
-
-
 @st.cache_data(ttl=60)
 def get_cascade(name):
     return api_get(f"/cascade/{name}")
-
-
 overview = get_overview()
-
 if not overview:
-    st.error("RiskGraph API is unavailable. Start the API container and refresh.")
+    st.error("RiskGraph data is unavailable. Check that app/dashboard/data contains the required processed Parquet files.")
     st.stop()
-
 # ============================================================
 # SIDEBAR
 # ============================================================
-
 if "page" not in st.session_state:
     st.session_state.page = "About RiskGraph"
-
 with st.sidebar:
     st.markdown(
         """
@@ -520,7 +636,6 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
-
     navigation = [
         "About RiskGraph",
         "Overview",
@@ -529,7 +644,6 @@ with st.sidebar:
         "Dependency Network",
         "Cascade Analysis",
     ]
-
     selected = st.radio(
         "Navigation",
         navigation,
@@ -537,17 +651,13 @@ with st.sidebar:
         label_visibility="collapsed",
         key="navigation_radio",
     )
-
     if selected != st.session_state.page:
         st.session_state.page = selected
         st.rerun()
-
     st.markdown("<div style='height:.55rem'></div>", unsafe_allow_html=True)
-
     if st.button("Refresh data", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-
     st.markdown(
         """
         <div class="sidebar-footer">
@@ -558,9 +668,7 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
-
 page = st.session_state.page
-
 # Each navigation selection should open at the top of its page.
 if "last_rendered_page" not in st.session_state:
     st.session_state.last_rendered_page = page
@@ -583,11 +691,9 @@ elif st.session_state.last_rendered_page != page:
         """,
         height=0,
     )
-
 # ============================================================
 # PAGE HEADER
 # ============================================================
-
 headers = {
     "About RiskGraph": (
         "About RiskGraph",
@@ -614,9 +720,7 @@ headers = {
         "Choose a package and inspect a structural what-if simulation showing potentially affected packages, propagation depth, and the high-risk packages reached."
     ),
 }
-
 title, subtitle = headers[page]
-
 st.markdown(
     '<div class="page-kicker">Open-source ecosystem analytics</div>',
     unsafe_allow_html=True,
@@ -627,13 +731,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown('<div class="top-rule"></div>', unsafe_allow_html=True)
-
 # ============================================================
 # ABOUT RISKGRAPH
 # ============================================================
-
 if page == "About RiskGraph":
-
     st.subheader("Dependency risk, made visible")
     st.write(
         "RiskGraph is a graph-analytics workspace for studying systemic "
@@ -648,11 +749,8 @@ if page == "About RiskGraph":
         "to the ecosystem and what could happen if an important dependency "
         "becomes unavailable."
     )
-
     st.divider()
-
     st.subheader("Current dataset")
-
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("Observed packages", f'{int(overview.get("packages", 0)):,}')
@@ -662,7 +760,6 @@ if page == "About RiskGraph":
         st.metric("Dependency edges", f'{int(overview.get("graph_edges", 0)):,}')
     with c4:
         st.metric("High-risk packages", f'{int(overview.get("high_risk", 0)):,}')
-
     st.caption(
         "The pipeline processed approximately 15.3 million raw GitHub Archive events "
         "from a seven-day collection window. After filtering for repositories "
@@ -670,9 +767,7 @@ if page == "About RiskGraph":
         "events across 679 repositories were retained. Raw input volume and filtered "
         "analysis volume are different measures."
     )
-
     st.divider()
-
     st.subheader("Original dataset and filtering")
     st.write(
         "The GitHub Archive input contained approximately 15.3 million events "
@@ -687,9 +782,7 @@ if page == "About RiskGraph":
         "package metadata, dependency graph, and filtered GitHub activity form the "
         "data used by the graph metrics, risk model, and cascade simulations."
     )
-
     st.divider()
-
     st.subheader("How RiskGraph was built")
     st.write(
         "RiskGraph was built as a distributed data-processing and graph-analytics "
@@ -698,7 +791,6 @@ if page == "About RiskGraph":
         "processed the large GitHub Archive input and prepared the package and "
         "dependency datasets."
     )
-
     build_steps = [
         (
             "01 · Data ingestion",
@@ -729,19 +821,15 @@ if page == "About RiskGraph":
             "Streamlit presents interactive charts, package profiles and network views."
         ),
     ]
-
     for step_title, step_description in build_steps:
         with st.expander(step_title, expanded=False):
             st.write(step_description)
-
     st.caption(
         "The risk weights are heuristic design choices. Betweenness is sampled, "
         "and the cascade model is a structural what-if simulation rather than a "
         "runtime or lockfile-aware outage prediction."
     )
-
     st.divider()
-
     st.subheader("Team contributions")
     st.write(
         "Use this section to describe who implemented each part of the project. "
@@ -749,7 +837,6 @@ if page == "About RiskGraph":
         "does not provide verified team-member names or an agreed person-by-person "
         "contribution split."
     )
-
     contribution_rows = [
         ("", "Data ingestion & storage", "Kafka ingestion, npm metadata collection, GitHub Archive ingestion, and RustFS storage"),
         ("", "Data engineering & processing", "Spark preprocessing, GitHub event filtering, and preparation of analysis datasets"),
@@ -785,30 +872,25 @@ if page == "About RiskGraph":
         "vulnerability score. Cascade results are structural simulations and do not "
         "model lockfile resolution, runtime behavior, or an actual package outage."
     )
-
     st.divider()
-
     st.subheader("Explore the workspace")
     st.write(
         "Each section answers a different question. Start with the overview, "
         "find packages worth investigating, then move into their dependency "
         "relationships and potential cascade impact."
     )
-
     with st.expander("About RiskGraph", expanded=False):
         st.write(
             "The landing page explains the project scope, dataset, graph "
             "direction, and how the risk score should be interpreted. Use it "
             "as a quick orientation guide whenever you need context."
         )
-
     with st.expander("Overview", expanded=False):
         st.write(
             "A high-level summary of the npm dependency ecosystem. Review "
             "package and edge counts, the risk distribution, and a ranked "
             "snapshot of packages with the highest model-derived scores."
         )
-
     with st.expander("High-Risk Packages", expanded=False):
         st.write(
             "A searchable list of packages classified as HIGH risk. Compare "
@@ -816,7 +898,6 @@ if page == "About RiskGraph":
             "deserve a closer look. A high score signals modeled systemic "
             "exposure, not a confirmed vulnerability."
         )
-
     with st.expander("Package Intelligence", expanded=False):
         st.write(
             "A focused profile for one package. Inspect its risk score, "
@@ -824,7 +905,6 @@ if page == "About RiskGraph":
             "and observed GitHub activity to understand the factors behind "
             "its classification."
         )
-
     with st.expander("Dependency Network", expanded=False):
         st.write(
             "An interactive, zoomable graph centered on a selected package. "
@@ -832,7 +912,6 @@ if page == "About RiskGraph":
             "use it. Choose Both to see incoming and outgoing relationships "
             "together, and adjust depth to change the network size."
         )
-
     with st.expander("Cascade Analysis", expanded=False):
         st.write(
             "A structural what-if simulation for a selected package. It shows "
@@ -840,13 +919,9 @@ if page == "About RiskGraph":
             "relationships, the depth of propagation, and how many high-risk "
             "packages are in the affected set."
         )
-
     st.divider()
-
     st.subheader("Reading the dependency graph")
-
     c1, c2 = st.columns(2)
-
     with c1:
         st.markdown("**Dependency direction**")
         st.write(
@@ -854,7 +929,6 @@ if page == "About RiskGraph":
             "Out-degree is the number of dependencies used by A. "
             "In-degree is the number of packages that depend on A."
         )
-
     with c2:
         st.markdown("**Why Both mode matters**")
         st.write(
@@ -862,47 +936,37 @@ if page == "About RiskGraph":
             "being highly important because many other packages depend on it. "
             "Both mode makes this distinction visible."
         )
-
     st.divider()
-
     st.subheader("How the risk score is built")
-
     c1, c2, c3 = st.columns(3)
-
     with c1:
         st.markdown("**1 · Structural exposure**")
         st.write(
             "PageRank, in-degree, sampled betweenness, and k-core position "
             "describe where a package sits in the dependency graph."
         )
-
     with c2:
         st.markdown("**2 · Maintenance exposure**")
         st.write(
             "Observed contributors, bus-factor signals, commit activity, "
             "and recency provide a maintenance perspective."
         )
-
     with c3:
         st.markdown("**3 · Final risk**")
         st.write(
             "Structural and maintenance components are combined into the "
             "final 0–1 systemic risk score."
         )
-
     st.info(
         "RiskGraph risk is a model-derived systemic dependency measure, "
         "not a security vulnerability score. Cascade results are structural "
         "simulations and do not model lockfile resolution, runtime behavior, "
         "or an actual package outage."
     )
-
 # ============================================================
 # OVERVIEW
 # ============================================================
-
 elif page == "Overview":
-
     kpis = [
         ("Packages", overview.get("packages", 0), ""),
         ("Graph nodes", overview.get("graph_nodes", 0), ""),
@@ -911,7 +975,6 @@ elif page == "Overview":
         ("Medium risk", overview.get("medium_risk", 0), "metric-warning"),
         ("GitHub observed", overview.get("github_observed", 0), ""),
     ]
-
     cols = st.columns(6)
     for col, (label, value, cls) in zip(cols, kpis):
         with col:
@@ -924,17 +987,14 @@ elif page == "Overview":
                 """,
                 unsafe_allow_html=True,
             )
-
     st.markdown(
         '<div class="section"><div class="section-title">Risk landscape</div>'
         '<div class="section-caption">Distribution across the observed package set.'
         '</div></div>',
         unsafe_allow_html=True,
     )
-
     distribution = get_distribution()
     left, right = st.columns([1.05, 1])
-
     with left:
         if distribution:
             df_dist = pd.DataFrame(distribution)
@@ -954,7 +1014,6 @@ elif page == "Overview":
                 legend=dict(orientation="h", y=-.05),
             )
             st.plotly_chart(fig, use_container_width=True)
-
     with right:
         st.markdown(
             """
@@ -978,14 +1037,12 @@ elif page == "Overview":
             """,
             unsafe_allow_html=True,
         )
-
     st.markdown(
         '<div class="section"><div class="section-title">Highest-risk packages</div>'
         '<div class="section-caption">Top packages ranked by systemic risk score.'
         '</div></div>',
         unsafe_allow_html=True,
     )
-
     top = get_top_risk(20)
     if top:
         df = pd.DataFrame(top)
@@ -1002,27 +1059,21 @@ elif page == "Overview":
         if "final_risk_score" in table:
             table["final_risk_score"] = table["final_risk_score"].round(4)
         st.dataframe(table, use_container_width=True, hide_index=True)
-
 # ============================================================
 # HIGH-RISK PACKAGES
 # ============================================================
-
 elif page == "High-Risk Packages":
-
     data = get_top_risk(500)
-
     if data:
         df = pd.DataFrame(data)
         high = df[
             df["risk_level"].astype(str).str.upper() == "HIGH"
         ].copy()
         high = high.sort_values("final_risk_score", ascending=False)
-
         search = st.text_input(
             "Search high-risk packages",
             placeholder="Type a package name",
         )
-
         if search:
             high = high[
                 high["package_name"].astype(str).str.contains(
@@ -1031,9 +1082,7 @@ elif page == "High-Risk Packages":
                     na=False,
                 )
             ]
-
         st.caption(f"Showing {len(high):,} matching HIGH-risk packages.")
-
         columns = [
             "package_name",
             "final_risk_score",
@@ -1045,34 +1094,27 @@ elif page == "High-Risk Packages":
             "active_contributors",
         ]
         columns = [c for c in columns if c in high.columns]
-
         table = high[columns].copy()
         for column in ["final_risk_score", "pagerank", "betweenness_sampled"]:
             if column in table:
                 table[column] = table[column].round(5)
-
         st.dataframe(
             table,
             use_container_width=True,
             hide_index=True,
             height=650,
         )
-
 # ============================================================
 # PACKAGE INTELLIGENCE
 # ============================================================
-
 elif page == "Package Intelligence":
-
     package = st.text_input(
         "Package",
         value="express",
         placeholder="e.g. express, debug, minimatch",
     ).strip()
-
     if package:
         data = get_package(package)
-
         if not data:
             st.warning(f"Package '{package}' was not found.")
         else:
@@ -1085,7 +1127,6 @@ elif page == "Package Intelligence":
             }
             risk_color = risk_colors.get(level, C["muted"])
             risk_label = f"{level} RISK" if level in risk_colors else "RISK UNKNOWN"
-
             st.markdown(
                 f"""
                 <div style="
@@ -1120,21 +1161,17 @@ elif page == "Package Intelligence":
                 """,
                 unsafe_allow_html=True,
             )
-
             st.write("")
-
             a, b, c, d = st.columns(4)
             a.metric("Risk score", f"{risk:.3f}")
             b.metric("In-degree", data.get("in_degree", 0))
             c.metric("Out-degree", data.get("out_degree", 0))
             d.metric("GitHub events", data.get("event_count", 0))
-
             st.markdown(
                 '<div class="section"><div class="section-title">Risk composition'
                 '</div></div>',
                 unsafe_allow_html=True,
             )
-
             component_df = pd.DataFrame(
                 {
                     "component": ["Structural", "Maintenance"],
@@ -1144,7 +1181,6 @@ elif page == "Package Intelligence":
                     ],
                 }
             )
-
             fig = px.bar(
                 component_df,
                 x="component",
@@ -1161,7 +1197,6 @@ elif page == "Package Intelligence":
                 margin=dict(l=10, r=10, t=20, b=20),
             )
             st.plotly_chart(fig, use_container_width=True)
-
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("PageRank", f"{data.get('pagerank', 0):.6f}")
             m2.metric(
@@ -1170,18 +1205,14 @@ elif page == "Package Intelligence":
             )
             m3.metric("K-core", data.get("kcore", 0))
             m4.metric("Bus factor", data.get("bus_factor", 0))
-
             st.info(
                 "GitHub values describe activity observed during the selected "
                 "seven-day Archive window."
             )
-
 # ============================================================
 # DEPENDENCY NETWORK
 # ============================================================
-
 elif page == "Dependency Network":
-
     st.markdown(
         '<div class="section"><div class="section-title">Dependency network'
         '</div><div class="section-caption">'
@@ -1189,9 +1220,7 @@ elif page == "Dependency Network":
         '</div></div>',
         unsafe_allow_html=True,
     )
-
     c1, c2, c3 = st.columns([2.1, 1, 1])
-
     with c1:
         graph_package = st.text_input(
             "Package",
@@ -1199,19 +1228,15 @@ elif page == "Dependency Network":
             key="graph_package",
             placeholder="e.g. express, debug, execa",
         ).strip()
-
     with c2:
         graph_mode = st.selectbox(
             "View",
             ["Both", "Dependencies", "Dependents"],
             index=0,
         )
-
     with c3:
         depth = st.selectbox("Depth", [1, 2, 3], index=0)
-
     package_data = get_package(graph_package) if graph_package else None
-
     if package_data:
         a, b, c = st.columns(3)
         a.metric("In-degree", package_data.get("in_degree", 0))
@@ -1221,7 +1246,6 @@ elif page == "Dependency Network":
             int(package_data.get("in_degree", 0))
             + int(package_data.get("out_degree", 0)),
         )
-
     st.markdown(
         """
         <div class="graph-legend">
@@ -1233,19 +1257,16 @@ elif page == "Dependency Network":
         """,
         unsafe_allow_html=True,
     )
-
     dependencies = (
         get_dependencies(graph_package, depth)
         if graph_mode in ["Both", "Dependencies"]
         else None
     )
-
     dependents = (
         get_dependents(graph_package, depth)
         if graph_mode in ["Both", "Dependents"]
         else None
     )
-
     node_map = {
         graph_package: {
             "id": graph_package,
@@ -1254,15 +1275,12 @@ elif page == "Dependency Network":
     }
     edge_set = set()
     edge_roles = {}
-
     def ingest_network(payload, relationship):
         if not payload:
             return
-
         for node in payload.get("nodes", []):
             if not isinstance(node, dict):
                 continue
-
             node_id = node.get("id") or node.get("name")
             if node_id:
                 node_map[node_id] = {
@@ -1270,11 +1288,9 @@ elif page == "Dependency Network":
                     **node,
                     "relationship": relationship,
                 }
-
         for edge in payload.get("edges", []):
             if not isinstance(edge, dict):
                 continue
-
             source = (
                 edge.get("source")
                 or edge.get("src")
@@ -1285,20 +1301,15 @@ elif page == "Dependency Network":
                 or edge.get("dst")
                 or edge.get("to")
             )
-
             if source and target:
                 edge_set.add((source, target))
                 edge_roles[(source, target)] = relationship
-
     ingest_network(dependencies, "dependency")
     ingest_network(dependents, "dependent")
-
     graph = nx.DiGraph()
     graph.add_nodes_from(node_map.keys())
     graph.add_edges_from(edge_set)
-
     if graph.number_of_nodes() > 1:
-
         positions = nx.spring_layout(
             graph,
             seed=42,
@@ -1306,7 +1317,6 @@ elif page == "Dependency Network":
             iterations=150,
         )
         positions[graph_package] = (0.0, 0.0)
-
         edge_traces = []
         for role, edge_color in [
             ("dependency", C["dependency"]),
@@ -1320,7 +1330,6 @@ elif page == "Dependency Network":
                 x1, y1 = positions[target]
                 edge_x += [x0, x1, None]
                 edge_y += [y0, y1, None]
-
             if edge_x:
                 edge_traces.append(
                     go.Scatter(
@@ -1333,25 +1342,20 @@ elif page == "Dependency Network":
                         name="Dependencies" if role == "dependency" else "Dependents",
                     )
                 )
-
         node_x, node_y = [], []
         labels, hover, sizes, colors = [], [], [], []
-
         for node in graph.nodes():
             x, y = positions[node]
             node_x.append(x)
             node_y.append(y)
             labels.append(node)
-
             local_in = graph.in_degree(node)
             local_out = graph.out_degree(node)
-
             hover.append(
                 f"<b>{node}</b><br>"
                 f"In-degree in view: {local_in}<br>"
                 f"Out-degree in view: {local_out}"
             )
-
             relationship = node_map.get(node, {}).get("relationship", "")
             if node == graph_package:
                 sizes.append(38)
@@ -1365,7 +1369,6 @@ elif page == "Dependency Network":
             else:
                 sizes.append(13)
                 colors.append("#53647D")
-
         node_trace = go.Scatter(
             x=node_x,
             y=node_y,
@@ -1384,7 +1387,6 @@ elif page == "Dependency Network":
                 color=C["text"],
             ),
         )
-
         fig = go.Figure(data=edge_traces + [node_trace])
         fig.update_layout(
             template=PLOT_TEMPLATE,
@@ -1407,7 +1409,6 @@ elif page == "Dependency Network":
                 showticklabels=False,
             ),
         )
-
         st.plotly_chart(
             fig,
             use_container_width=True,
@@ -1416,31 +1417,23 @@ elif page == "Dependency Network":
                 "scrollZoom": True,
             },
         )
-
         st.caption(
             f"{graph_package} is the selected package. "
             f"This view contains {graph.number_of_nodes():,} visible nodes "
             f"and {graph.number_of_edges():,} relationships. "
             "A -> B means A depends on B."
         )
-
     else:
         st.warning("No dependency relationships were returned.")
-
 # ============================================================
 # CASCADE ANALYSIS
 # ============================================================
-
 elif page == "Cascade Analysis":
-
     cascade = get_cascade_summary()
-
     if cascade:
         df = pd.DataFrame(cascade)
-
         if not df.empty:
             df = df.sort_values("total_affected", ascending=False)
-
             fig = px.bar(
                 df.head(20),
                 x="failed_package",
@@ -1451,7 +1444,6 @@ elif page == "Cascade Analysis":
                     "total_affected": "Affected packages",
                 },
             )
-
             fig.update_layout(
                 template=PLOT_TEMPLATE,
                 colorway=[C["accent"], C["cyan"], C["success"], C["warning"], C["danger"]],
@@ -1461,31 +1453,24 @@ elif page == "Cascade Analysis":
                 margin=dict(l=10, r=10, t=50, b=20),
                 xaxis_tickangle=-45,
             )
-
             st.plotly_chart(fig, use_container_width=True)
-
             st.dataframe(
                 df,
                 use_container_width=True,
                 hide_index=True,
             )
-
             st.markdown(
                 '<div class="section"><div class="section-title">'
                 'Investigate a cascade</div></div>',
                 unsafe_allow_html=True,
             )
-
             selected = st.selectbox(
                 "Package",
                 df["failed_package"].tolist(),
             )
-
             result = get_cascade(selected)
-
             if result:
                 summary = result.get("summary", {})
-
                 a, b, c, d, e = st.columns(5)
                 a.metric("Risk score", f'{summary.get("risk_score", 0):.3f}')
                 b.metric(
@@ -1504,12 +1489,9 @@ elif page == "Cascade Analysis":
                     "Cascade depth",
                     summary.get("cascade_depth", 0),
                 )
-
                 affected = result.get("affected_nodes", [])
-
                 if affected:
                     affected_df = pd.DataFrame(affected)
-
                     columns = [
                         "id",
                         "depth",
@@ -1521,14 +1503,12 @@ elif page == "Cascade Analysis":
                         c for c in columns
                         if c in affected_df.columns
                     ]
-
                     st.dataframe(
                         affected_df[columns].sort_values("depth"),
                         use_container_width=True,
                         hide_index=True,
                         height=520,
                     )
-
             st.info(
                 "Cascade results are structural simulations. They do not "
                 "model npm lockfiles, version resolution, optional dependencies, "
