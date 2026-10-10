@@ -4,6 +4,12 @@
 .env.*
 !.env.example
 
+# Include processed datasets required by the Streamlit dashboard
+!app/dashboard/data/
+!app/dashboard/data/**/*.parquet
+!app/dashboard/data/**/*.csv
+!app/dashboard/data/**/*.jsonl
+
 # Python
 __pycache__/
 *.py[cod]
