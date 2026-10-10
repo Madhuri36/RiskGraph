@@ -42,8 +42,8 @@ C = {
     "warning": "#FF9F43",
     "success": "#35D07F",
     "cyan": "#43C7F5",
-    "dependency": "#43C7F5",
-    "dependent": "#B28DFF",
+    "dependency": "#667085",
+    "dependent": "#667085",
     "plot": "#0B1220",
 }
 PLOT_TEMPLATE = "plotly_dark"
@@ -1249,10 +1249,10 @@ elif page == "Dependency Network":
     st.markdown(
         """
         <div class="graph-legend">
-            <span><span class="dot" style="background:#FF4D5F;"></span>Selected package</span>
+            <span><span class="dot" style="background:#FF4D8D;"></span>Selected package</span>
             <span><span class="dot" style="background:#43C7F5;"></span>Dependencies (what it uses)</span>
             <span><span class="dot" style="background:#B28DFF;"></span>Dependents (what uses it)</span>
-            <span><span class="dot" style="background:#53647D;"></span>Other visible nodes</span>
+            <span><span class="dot" style="background:#4B586B;"></span>Other visible nodes</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1336,8 +1336,8 @@ elif page == "Dependency Network":
                         x=edge_x,
                         y=edge_y,
                         mode="lines",
-                        line=dict(width=1.45, color=edge_color),
-                        opacity=0.68,
+                        line=dict(width=0.8, color="#667085"),
+                        opacity=0.42,
                         hoverinfo="none",
                         name="Dependencies" if role == "dependency" else "Dependents",
                     )
@@ -1358,8 +1358,8 @@ elif page == "Dependency Network":
             )
             relationship = node_map.get(node, {}).get("relationship", "")
             if node == graph_package:
-                sizes.append(38)
-                colors.append("#FF4D5F")
+                sizes.append(40)
+                colors.append("#FF4D8D")
             elif relationship == "dependency":
                 sizes.append(23)
                 colors.append("#43C7F5")
@@ -1368,7 +1368,7 @@ elif page == "Dependency Network":
                 colors.append("#B28DFF")
             else:
                 sizes.append(13)
-                colors.append("#53647D")
+                colors.append("#4B586B")
         node_trace = go.Scatter(
             x=node_x,
             y=node_y,
@@ -1380,11 +1380,11 @@ elif page == "Dependency Network":
             marker=dict(
                 size=sizes,
                 color=colors,
-                line=dict(width=1, color=C["panel"]),
+                line=dict(width=1.1, color="#0B1220"),
             ),
             textfont=dict(
-                size=10.5,
-                color=C["text"],
+                size=10,
+                color="#E6EAF2",
             ),
         )
         fig = go.Figure(data=edge_traces + [node_trace])
