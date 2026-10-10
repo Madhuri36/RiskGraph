@@ -1,0 +1,182 @@
+RISKGRAPH PROCESSING - RUN ORDER
+
+0. IMPORTANT
+-------------
+Revoke the GitHub token that was exposed in chat/code and create a new one.
+Keep the new token only in .env and never commit .env.
+
+1. Add GraphFrames
+------------------
+Add to requirements.txt:
+
+graphframes-py==0.12.2
+
+Your project already uses networkx, so keep networkx installed.
+
+Rebuild the Spark image after changing requirements:
+
+docker compose build
+docker compose up -d
+
+Check service names:
+
+docker compose config --services
+
+Then verify the Spark master can see the project:
+
+docker compose exec spark-master pwd
+docker compose exec spark-master ls processing
+
+If your Spark master service has another name, replace spark-master below.
+
+2. Run the ETL preparation
+--------------------------
+This reads:
+  raw/npm-packages
+  raw/github-events
+
+and creates:
+  processed/package_nodes
+  processed/dependency_edges
+  processed/github_filtered_events
+  processed/github_repo_activity
+  processed/github_contributors
+  processed/github_issue_response
+  processed/package_enriched
+
+Run:
+
+docker compose exec spark-master spark-submit \
+  --master spark://spark-master:7077 \
+  processing/prepare_datasets.py
+
+Expected important checks:
+  NPM package count: about 4000
+  Dependency edge count: depends on your package sample
+  Filtered GitHub events: less than or equal to 15.3M
+  GitHub repositories: <= 4000
+  Enriched packages: about 4000
+
+3. Install/resolve GraphFrames
+------------------------------
+GraphFrames 0.12.2 is used with Spark 3.x + Scala 2.12.
+
+Run the graph job with:
+
+docker compose exec spark-master spark-submit \
+  --master spark://spark-master:7077 \
+  --packages io.graphframes:graphframes-spark3_2.12:0.12.2 \
+  processing/build_graph.py
+
+This creates:
+  processed/graph_vertices
+  processed/graph_edges
+  processed/graph_metrics
+
+The graph direction is:
+
+  package -> dependency
+
+Therefore:
+  in-degree  = number of packages depending on this package
+  out-degree = number of dependencies of this package
+
+4. Run risk analysis
+--------------------
+docker compose exec spark-master spark-submit \
+  --master spark://spark-master:7077 \
+  processing/risk_analysis.py
+
+Creates:
+
+  processed/risk_scores
+
+It calculates:
+  PageRank risk
+  in-degree risk
+  sampled betweenness risk
+  contributor concentration risk
+  bus-factor risk
+  commit activity risk
+  recency risk
+  centrality risk
+  maintenance risk
+  final risk score
+  risk level
+
+5. Run cascading-failure simulation
+------------------------------------
+docker compose exec spark-master spark-submit \
+  --master spark://spark-master:7077 \
+  processing/cascade_simulation.py
+
+Creates:
+
+  processed/cascade_summary
+  processed/cascade_affected_nodes
+
+For each of the top 20 risky packages it:
+  1. removes/fails the package conceptually
+  2. reverses dependency edges
+  3. finds direct dependents
+  4. continues BFS through downstream dependents
+  5. counts total affected packages
+  6. records cascade depth
+
+6. Final RustFS layout
+----------------------
+riskgraph/
+  raw/
+    npm-packages/
+    github-events/
+
+  processed/
+    package_nodes/
+    dependency_edges/
+    github_filtered_events/
+    github_repo_activity/
+    github_contributors/
+    github_issue_response/
+    package_enriched/
+    graph_vertices/
+    graph_edges/
+    graph_metrics/
+    risk_scores/
+    cascade_summary/
+    cascade_affected_nodes/
+    checkpoints/
+
+7. DO NOT rerun ingestion
+--------------------------
+Your ingestion is already complete.
+
+From now on, the normal sequence is:
+
+  raw data
+      |
+      v
+  prepare_datasets.py
+      |
+      v
+  build_graph.py
+      |
+      v
+  risk_analysis.py
+      |
+      v
+  cascade_simulation.py
+      |
+      v
+  FastAPI + Streamlit dashboard
+
+8. Quick validation
+--------------------
+You can inspect the final Parquet outputs from Spark:
+
+docker compose exec spark-master spark-sql
+
+Then:
+
+SELECT * FROM parquet.`s3a://riskgraph/processed/risk_scores`
+ORDER BY final_risk_score DESC
+LIMIT 20;

@@ -1,358 +1,368 @@
-# RiskGraph — Big Data Analytics
+# RiskGraph
 
-A Big Data Analytics project for mapping systemic dependency risk in the npm/JavaScript open-source ecosystem using Kafka, RustFS, Apache Spark, and graph analytics.
+**Mapping Systemic Dependency Risk in the npm/JavaScript Open-Source
+Ecosystem Using Big Data and Graph Analytics**
 
-RiskGraph aims to analyze package dependencies, identify critical packages and maintainers, measure ecosystem health, and simulate cascading failures caused by dependency disruptions.
+RiskGraph studies how npm package dependencies connect across the
+JavaScript ecosystem and estimates which packages may have wider
+structural impact if they become unavailable. It combines npm metadata,
+GitHub Archive activity, distributed data processing, graph analytics,
+heuristic risk scoring, and cascade simulation in an interactive
+application.
+
+> **Scope note:** RiskGraph is a research/educational prototype. Risk
+> labels are heuristic systemic-dependency indicators, not vulnerability
+> ratings or calibrated probabilities. Cascade results show potential
+> structural reach under the graph assumptions; they do not guarantee
+> that real applications will break.
+
+## Features
+
+-   Collect npm package metadata and dependency declarations.
+-   Collect GitHub Archive activity for a defined UTC window.
+-   Stream ingestion records through Kafka.
+-   Store raw and processed data in RustFS object storage.
+-   Process and transform data with Apache Spark.
+-   Build a directed npm dependency graph and calculate graph metrics
+    with NetworkX.
+-   Generate heuristic package risk scores and categories.
+-   Simulate potential dependency cascade reach from a selected package.
+-   Explore outputs through FastAPI and a Streamlit dashboard.
 
 ## Architecture
 
-- **Data Sources:** npm Registry API, GitHub Events API (with planned GH Archive integration)
-- **Ingestion:** Python producers
-- **Streaming:** Apache Kafka
-- **Object Storage:** RustFS (S3-compatible object storage)
-- **Data Processing:** Apache Spark / PySpark
-- **Graph Analytics:** NetworkX (prototype), with planned GraphFrames / GraphX
-- **Backend:** FastAPI
-- **Dashboard:** Streamlit
-- **Infrastructure:** Docker Compose
+``` text
+npm Registry ───────┐
+                    ├──> Ingestion ──> Kafka topics
+GitHub Archive ─────┘                    │
+                                         v
+                              RustFS (S3-compatible storage)
+                                         │
+                                         v
+                               Apache Spark processing
+                                         │
+                                         v
+                             Dependency graph + metrics
+                                         │
+                              Risk scoring + cascade
+                                         │
+                              ┌──────────┴──────────┐
+                              v                     v
+                           FastAPI              Streamlit
+```
 
-## Requirements
+## Technology stack
 
-- Docker Desktop with Docker Compose v2
-- Python 3.11+
-- VS Code (recommended)
-- Git (recommended)
+-   Python 3.11+
+-   Docker Desktop and Docker Compose
+-   Apache Kafka
+-   RustFS (S3-compatible object storage)
+-   Apache Spark 3.5.7
+-   NetworkX 3.1
+-   FastAPI
+-   Streamlit and Plotly
+-   Java 11 for the Spark environment
 
-## Project Structure
+## Dataset and current results
 
-```text
+Latest recorded results from this project run:
+
+  Measure                                                               Result
+  ---------------------------------------------- -----------------------------
+  npm package records collected                                          4,000
+  Raw GitHub Archive events                         Approximately 15.3 million
+  Filtered GitHub events                           Approximately 16.8 thousand
+  Repositories represented in filtered events                              679
+  Dependency graph vertices                                              8,819
+  Dependency graph edges                                                15,456
+  Packages with matched GitHub observations                              1,550
+  Packages without matched GitHub observations                           2,450
+  HIGH risk                                                                116
+  MEDIUM risk                                                            1,449
+  LOW risk                                                               2,435
+
+GitHub Archive data covers **2026-09-26 through 2026-10-02 (UTC)**. The
+npm collection is a 4,000-package sample, not a complete crawl of the
+registry. A package without matched activity in this seven-day window is
+not necessarily inactive or unmaintained.
+
+## Repository structure
+
+``` text
 RiskGraph/
 ├── analytics/
+│   ├── risk_analysis.py
+│   └── cascade_simulation.py
+├── processing/
+│   ├── prepare_datasets.py
 │   └── build_graph.py
-├── api/
-├── dashboard/
-├── ingestion/
-│   ├── create_topics.py
-│   ├── npm_producer.py
-│   ├── github_producer.py
-│   └── consume_sample.py
-├── storage/
-│   └── rustfs_client.py
-├── data/
+├── app/
+│   ├── api/
+│   │   └── main.py
+│   └── dashboard/
+│       └── Home.py
 ├── docker-compose.yml
+├── Dockerfile
 ├── requirements.txt
-├── .env
-├── .env.example
-├── .gitignore
 └── README.md
 ```
 
-## Environment Setup
+The ingestion scripts may be in an `ingestion/` directory, depending on
+the current checkout. To see the exact files in your copy:
 
-Clone the repository and navigate to the project directory.
-
-```powershell
-git clone <your-repository-url>
-cd RiskGraph
+``` powershell
+Get-ChildItem -Recurse -Filter *.py | Select-Object -ExpandProperty FullName
 ```
 
-Create a Python virtual environment:
+## Prerequisites
 
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+-   Docker Desktop installed and running, with Docker Compose support.
+-   Git.
+-   Python 3.11+ if running any scripts directly on the host.
+-   Enough available memory for Spark and Docker. On a machine with 8 GB
+    RAM, run processing stages one at a time and use conservative Spark
+    memory settings.
+
+For the Windows setup used during development, open PowerShell in the
+repository root:
+
+``` powershell
+cd C:\Users\saima\.vscode\RiskGraph
 ```
 
-Install the required dependencies:
+When using a different computer, replace the path with the directory
+where you cloned the repository.
 
-```powershell
-python -m pip install -r requirements.txt
-```
+## Configuration
 
-If PowerShell blocks virtual environment activation, run:
+Review `docker-compose.yml` and any `.env.example` file before starting.
+Create a local `.env` only if the compose configuration requires it.
+Never commit credentials or secrets.
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-```
+Important service addresses:
 
-## Environment Variables
+-   RustFS inside Docker: `http://rustfs:9000`
+-   RustFS from the host: `http://localhost:9000`
+-   RustFS Console: `http://localhost:9001`
+-   RustFS bucket: `riskgraph`
+-   Spark master inside Docker: `spark://spark-master:7077`
+-   Spark Master UI: `http://localhost:8081`
 
-Create a `.env` file in the project root for configuration such as GitHub authentication and Kafka settings.
+Kafka host/internal addresses and credentials must match the values in
+the current `docker-compose.yml`.
 
-```env
-GITHUB_TOKEN=your_github_personal_access_token
-GITHUB_REPO=nodejs/node
+## Run the application
 
-KAFKA_BOOTSTRAP_SERVERS=localhost:29092
-GITHUB_EVENTS_TOPIC=github-events
-NPM_PACKAGES_TOPIC=npm-packages
-```
+### 1. Start the services
 
-Use a GitHub Personal Access Token to help avoid unauthenticated API rate limits. Keep the token private and never commit `.env` to Git.
+Run from the repository root:
 
-Use `.env.example` to document the required variable names without including real credentials.
-
-## Start Docker Services
-
-Make sure Docker Desktop is running. From the project root, execute:
-
-```powershell
+``` powershell
 docker compose up -d --build
 ```
 
-Check the service status:
+Check that services are running:
 
-```powershell
+``` powershell
 docker compose ps
+docker compose logs --tail 100
 ```
 
-The project uses Docker Compose to run Kafka, RustFS, Spark Master, Spark Worker, FastAPI, and Streamlit.
+### 2. Open the web interfaces
 
-### Service URLs
+Once the services are up, open these URLs in your browser:
 
-| Service | URL |
-|---|---|
-| Streamlit Dashboard | http://localhost:8501 |
-| FastAPI Documentation | http://localhost:8000/docs |
-| RustFS Console | http://localhost:9001 |
-| RustFS S3 API | http://localhost:9000 |
-| Spark Master UI | http://localhost:8081 |
-| Kafka (host access) | `localhost:29092` |
-| Kafka (inside Compose) | `kafka:9092` |
+  -----------------------------------------------------------------------------
+  Service                 URL                           What it is for
+  ----------------------- ----------------------------- -----------------------
+  RiskGraph Dashboard     http://localhost:8501         Explore ecosystem
+                                                        overview, package risk,
+                                                        dependency graph, and
+                                                        cascade simulations
 
-**Local RustFS credentials**
+  FastAPI Swagger         http://localhost:8000/docs    Inspect and test API
+                                                        endpoints
 
-- Username / Access key: `riskgraph`
-- Password / Secret key: `riskgraph_local_password`
+  FastAPI ReDoc           http://localhost:8000/redoc   Alternative API
+                                                        documentation
 
-These are local development credentials only. Change them before using the setup in a shared or production environment.
+  RustFS Console          http://localhost:9001         Browse the
+                                                        object-storage bucket
+                                                        and data
 
-## Kafka Setup and Data Ingestion
+  Spark Master UI         http://localhost:8081         Monitor Spark workers
+                                                        and applications
+  -----------------------------------------------------------------------------
 
-### 1. Create Kafka Topics
+These are **local URLs**, not public internet links. They work on the
+computer running Docker. Anyone reproducing the project will access the
+same services through `localhost` on their own computer.
 
-Activate your Python virtual environment and run:
+### 3. Check the API
 
-```powershell
-python ingestion/create_topics.py
+``` powershell
+Invoke-RestMethod http://localhost:8000/overview
+Invoke-RestMethod http://localhost:8000/package/express
 ```
 
-The current topics are:
+Use http://localhost:8000/docs to verify the exact endpoints available
+in the current version.
 
-- `npm-packages`
-- `github-events`
+## Reproduce the data-processing pipeline
 
-Verify the topics from Docker:
+Run the stages in order. The raw input data must already exist in RustFS
+before dataset preparation.
 
-```powershell
-docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+### 1. Prepare datasets
+
+``` powershell
+docker compose exec spark-master /opt/spark/bin/spark-submit `
+  --master spark://spark-master:7077 `
+  --packages org.apache.hadoop:hadoop-aws:3.3.4 `
+  processing/prepare_datasets.py
 ```
 
-### 2. Ingest npm Package Metadata
+This stage reads raw data, filters relevant GitHub events, performs
+required transformations and matching, and writes prepared outputs to
+RustFS.
 
-The npm producer fetches package metadata directly from the npm Registry API for a small initial set of packages.
+### 2. Build the dependency graph
 
-Run:
-
-```powershell
-python ingestion/npm_producer.py
+``` powershell
+docker compose exec spark-master /opt/spark/bin/spark-submit `
+  --master spark://spark-master:7077 `
+  --executor-cores 2 `
+  --executor-memory 1536M `
+  --driver-memory 768M `
+  --packages org.apache.hadoop:hadoop-aws:3.3.4 `
+  processing/build_graph.py
 ```
 
-The initial sample includes:
+This stage constructs package vertices and directed dependency edges
+from the collected metadata.
 
-- express
-- react
-- lodash
-- debug
-- chalk
+### 3. Run risk analysis and cascade simulation
 
-The producer publishes package names, versions, descriptions, dependencies, development dependencies, maintainers, and collection timestamps to the `npm-packages` topic.
+The exact command depends on how the current scripts define their entry
+points and load their inputs. Check the script headers and arguments
+first:
 
-### 3. Ingest GitHub Events
-
-Run:
-
-```powershell
-python ingestion/github_producer.py
+``` powershell
+Get-Content .\analytics\risk_analysis.py -TotalCount 80
+Get-Content .\analytics\cascade_simulation.py -TotalCount 80
 ```
 
-The current GitHub producer uses the public GitHub Events API for a small sample feed. The repository can be configured through `.env`.
+Run each script using the invocation supported by that implementation.
+The pipeline order is:
 
-The producer publishes event information, including event type, repository, actor, timestamp, and payload, to the `github-events` topic.
+1.  Collect/ingest raw npm and GitHub data.
+2.  Prepare and filter datasets.
+3.  Build the dependency graph.
+4.  Calculate graph metrics and risk scores.
+5.  Run cascade simulations.
+6.  Restart the API/dashboard if they need to reload generated outputs.
 
-This is an initial sample ingestion method. GH Archive hourly JSON ingestion is planned for broader historical and ecosystem coverage.
+Do not rerun data collection just to reopen the dashboard. Inspect the
+crawler/producer first: rerunning it may append duplicates or recollect
+data.
 
-### 4. Verify Kafka Messages
+## Kafka topics and ingestion
 
-Check the npm topic offsets:
+The project used these Kafka topics:
 
-```powershell
-docker compose exec kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic npm-packages
+-   `npm-packages`
+-   `github-events`
+
+If the topic-creation script exists in your checkout, inspect and run it
+from the repository root:
+
+``` powershell
+Get-ChildItem .\ingestion -File
+python .\ingestion\create_topics.py
 ```
 
-Consume npm messages:
+If the `ingestion/` directory or script is absent, use the recursive
+Python-file listing above to find the actual current script names.
+Ensure the project dependencies are installed before running host-side
+Python scripts.
 
-```powershell
-docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic npm-packages --from-beginning --timeout-ms 10000
+Optional host Python environment:
+
+``` powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Consume GitHub events:
+## Data storage and graph convention
 
-```powershell
-docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic github-events --from-beginning --timeout-ms 10000
-```
+The RustFS bucket is named `riskgraph`. Raw data is stored under `raw/`,
+while prepared datasets and analytics outputs are stored under
+`processed/`; exact filenames depend on the scripts.
 
-When running Python ingestion scripts directly from Windows, use `localhost:29092` as the Kafka bootstrap server. When running services inside the Docker Compose network, use `kafka:9092`.
+Graph direction is **A → B means package A depends on package B**:
 
-## RustFS Object Storage
+-   **Out-degree:** number of dependencies used by package A.
+-   **In-degree:** number of packages that depend on package A.
 
-RiskGraph uses RustFS as its S3-compatible object storage layer for the data lake.
+A package with high in-degree may have broad structural reach in the
+dependency graph.
 
-The Python MinIO SDK is used to communicate with RustFS through its S3-compatible API.
+## Useful commands
 
-The connection is configured in:
-
-```text
-storage/rustfs_client.py
-```
-
-For Python scripts running directly on the host, use:
-
-```python
-from minio import Minio
-
-client = Minio(
-    "localhost:9000",
-    access_key="riskgraph",
-    secret_key="riskgraph_local_password",
-    secure=False
-)
-
-bucket = "riskgraph"
-
-if not client.bucket_exists(bucket):
-    client.make_bucket(bucket)
-```
-
-For code running inside a Docker Compose container, use `rustfs:9000` instead of `localhost:9000`, assuming the RustFS service is named `rustfs`.
-
-Test the connection from Windows PowerShell:
-
-```powershell
-python -c "from storage.rustfs_client import client; print(client.list_buckets())"
-```
-
-The `riskgraph` bucket has been created and its existence verified.
-
-**Current status:** RustFS connectivity and bucket initialization are verified. A Kafka-to-RustFS consumer that persists the ingested messages is the next implementation stage.
-
-## Spark Processing
-
-RiskGraph uses PySpark to process ingested data and prepare package dependency graphs.
-
-The starter graph extraction script is:
-
-```text
-analytics/build_graph.py
-```
-
-Run it from the host virtual environment:
-
-```powershell
-python analytics/build_graph.py
-```
-
-The initial prototype consumes a small Kafka sample and produces vertex and edge datasets in the local `data/` directory.
-
-The script is a starting point for graph extraction. Distributed Spark processing, Iceberg integration, and scalable graph algorithms remain planned implementation stages.
-
-## Graph Analytics
-
-The project is intended to analyze package dependencies and ecosystem risk through:
-
-- **Dependency Graph:** Represent packages as vertices and dependencies as directed edges.
-- **PageRank:** Identify packages with structural importance in the dependency network.
-- **Centrality:** Measure package connectivity and potential impact.
-- **Community Detection:** Identify groups of closely connected packages.
-- **Maintenance Risk:** Incorporate package and maintainer activity signals.
-- **Cascading Failure Simulation:** Model potential propagation of package disruptions through dependent packages.
-
-These analytics will be implemented incrementally after the data storage and processing pipelines are established.
-
-## API and Dashboard
-
-### FastAPI
-
-The backend service is available at:
-
-http://localhost:8000/docs
-
-FastAPI will expose processed graph analytics and risk information through API endpoints as implementation progresses.
-
-### Streamlit
-
-The dashboard is available at:
-
-http://localhost:8501
-
-Streamlit will be used to visualize package dependencies, graph metrics, ecosystem health indicators, and cascading failure scenarios as the analytics are developed.
-
-## Current Implementation Status
-
-| Component | Status |
-|---|---|
-| Docker Compose infrastructure | Running |
-| Kafka broker and topics | Verified |
-| GitHub event producer | Published sample events |
-| npm package producer | Published sample packages |
-| Kafka consumer verification | Verified for npm |
-| RustFS connection | Verified |
-| `riskgraph` bucket | Created |
-| Kafka-to-RustFS persistence | Pending |
-| Spark data processing | Starter prototype |
-| Distributed graph analytics | Planned |
-| Maintenance-risk model | Planned |
-| Cascading-failure simulation | Planned |
-| Full dashboard integration | Planned |
-
-## Suggested Implementation Roadmap
-
-1. Persist raw Kafka messages to RustFS in JSONL format.
-2. Expand ingestion to GH Archive and a larger set of npm packages.
-3. Read stored data from RustFS using PySpark.
-4. Clean, normalize, and transform package metadata and GitHub activity.
-5. Build the package dependency graph with vertices and directed edges.
-6. Implement PageRank, centrality, and community detection.
-7. Develop maintenance-risk indicators and cascading-failure simulations.
-8. Expose processed results through FastAPI.
-9. Integrate graph analytics and visualizations into Streamlit.
-10. Evaluate the system with larger datasets and document findings.
-
-## Stop and Reset Services
-
-Stop the containers while preserving their volumes:
-
-```powershell
+``` powershell
+docker compose ps
+docker compose logs -f api
+docker compose logs -f dashboard
+docker compose logs -f kafka
+docker compose logs -f rustfs
+docker compose logs -f spark-master
+docker compose restart api dashboard
+docker compose stop
+docker compose start
 docker compose down
 ```
 
-To stop the containers and remove their associated Compose volumes:
+`docker compose down` removes containers and the network while normally
+preserving named volumes. Avoid `docker compose down -v` unless you
+intentionally want to delete persisted volumes and data.
 
-```powershell
-docker compose down -v
-```
+## Troubleshooting
 
-**Warning:** `docker compose down -v` is destructive and may permanently delete local Kafka and RustFS data stored in Compose-managed volumes.
+**A service is unavailable:** check `docker compose ps` and
+`docker compose logs --tail 100 <service>`.
 
-## Notes
+**Spark cannot find S3A classes:** the Spark job requires a Hadoop AWS
+connector compatible with the Hadoop libraries in the Spark image. This
+project used `org.apache.hadoop:hadoop-aws:3.3.4`; verify versions if
+the error persists.
 
-- The current ingestion scripts use small samples for pipeline testing, not complete ecosystem coverage.
-- Host-side scripts use `localhost:29092` for Kafka and `localhost:9000` for RustFS.
-- Containerized services should use their Compose service names and internal ports.
-- Do not commit API tokens, passwords, or other secrets to version control.
-- The current starter is an incremental prototype; distributed analytics and full data lake integration are ongoing development tasks.
+**Docker/Spark uses too much memory:** run one Spark job at a time, use
+the memory settings above, and check Docker Desktop/WSL resource limits.
+
+**API results are empty or stale:** verify processed objects exist in
+RustFS, check `/overview`, inspect API logs, and confirm output
+filenames/schema match what the API expects. Restart the API/dashboard
+if they load results only at startup.
+
+## Limitations
+
+-   The npm sample is not the full registry.
+-   GitHub activity covers only seven UTC days.
+-   Package-to-repository matching can miss records.
+-   Betweenness centrality is sampled.
+-   Risk scores are project-defined heuristics, not calibrated
+    probabilities or vulnerability scores.
+-   Cascade simulation does not model lockfiles, exact version
+    resolution, runtime behavior, or actual outage telemetry.
+
+## Team contributions
+
+Add the four team members and their actual responsibilities before
+submitting the project.
 
 ## License
 
-Add the project's chosen license here before public distribution.
+Add the license selected by your team or course before publishing the
+repository.
