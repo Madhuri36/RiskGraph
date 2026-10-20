@@ -838,10 +838,10 @@ if page == "About RiskGraph":
         "contribution split."
     )
     contribution_rows = [
-        ("", "Data ingestion & storage", "Kafka ingestion, npm metadata collection, GitHub Archive ingestion, and RustFS storage"),
-        ("", "Data engineering & processing", "Spark preprocessing, GitHub event filtering, and preparation of analysis datasets"),
-        ("", "Graph analytics & risk", "Dependency graph construction, graph metrics, heuristic risk scoring, and cascade simulation"),
-        ("", "API, dashboard & integration", "FastAPI endpoints, Streamlit frontend, interactive visualizations, and end-to-end integration"),
+        ("Ansita Singh", "Data ingestion & storage", "Kafka ingestion, npm metadata collection, GitHub Archive ingestion, and RustFS storage"),
+        ("Sai Madhuri Bodapati", "Data engineering & processing", "Spark preprocessing, GitHub event filtering, and preparation of analysis datasets"),
+        ("Musfiraa Arif", "Graph analytics & risk", "Dependency graph construction, graph metrics, heuristic risk scoring, and cascade simulation"),
+        ("Kavya Tantuvay", "API, dashboard & integration", "FastAPI endpoints, Streamlit frontend, interactive visualizations, and end-to-end integration"),
     ]
     st.dataframe(
         pd.DataFrame(
