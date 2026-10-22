@@ -10,6 +10,16 @@ GitHub Archive activity, distributed data processing, graph analytics,
 heuristic risk scoring, and cascade simulation in an interactive
 application.
 
+## 📹 Demo
+
+[![Watch the demo](https://img.shields.io/badge/Watch%20Demo-Loom-purple?style=for-the-badge&logo=loom)](https://www.loom.com/share/59fa054632734035a4fce63cf5e60549)
+
+https://github.com/user-attachments/assets/418d43bc-9d79-4d53-a77d-c2c3784f7367
+
+> A walkthrough of the RiskGraph dashboard — Overview, High-Risk Packages, Package Intelligence, Dependency Network, and Cascade Analysis.
+
+---
+
 > **Scope note:** RiskGraph is a research/educational prototype. Risk
 > labels are heuristic systemic-dependency indicators, not vulnerability
 > ratings or calibrated probabilities. Cascade results show potential
@@ -359,10 +369,13 @@ if they load results only at startup.
 
 ## Team contributions
 
-Add the four team members and their actual responsibilities before
-submitting the project.
+| Member | Role |
+|---|---|
+| Ansita Singh | Data ingestion — npm registry crawler, GitHub Archive collector, Kafka producer |
+| Sai Madhuri Bodapati | Data storage and processing — RustFS object storage, Apache Spark pipeline |
+| Musfiraa Arif | Graph analytics — dependency graph construction, NetworkX metrics, risk scoring |
+| Kavya Tantuvay | Application and demo — FastAPI REST API, Streamlit dashboard, cascade simulation display |
 
 ## License
 
-Add the license selected by your team or course before publishing the
-repository.
+Add the license selected by your team or course before publishing the repository.
