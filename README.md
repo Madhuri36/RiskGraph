@@ -211,25 +211,65 @@ The project uses Spark 3.5.7 with a Hadoop AWS connector for S3-compatible stora
 
 RiskGraph models package relationships as a directed graph.
 
-Let:
+**Mapping Systemic Dependency Risk in the npm/JavaScript Open-Source
+Ecosystem Using Big Data and Graph Analytics**
 
-\[
-G=(V,E)
-\]
+RiskGraph studies how npm package dependencies connect across the
+JavaScript ecosystem and estimates which packages may have wider
+structural impact if they become unavailable. It combines npm metadata,
+GitHub Archive activity, distributed data processing, graph analytics,
+heuristic risk scoring, and cascade simulation in an interactive
+application.
 
-where:
+## 📹 Demo
 
-- \(V\) is the set of package vertices.
-- \(E\) is the set of directed dependency edges.
+[![Watch the demo](https://img.shields.io/badge/Watch%20Demo-Loom-purple?style=for-the-badge&logo=loom)](https://www.loom.com/share/59fa054632734035a4fce63cf5e60549)
 
-### Graph direction
+https://github.com/user-attachments/assets/418d43bc-9d79-4d53-a77d-c2c3784f7367
 
-**A → B means package A depends on package B.**
+> A walkthrough of the RiskGraph dashboard — Overview, High-Risk Packages, Package Intelligence, Dependency Network, and Cascade Analysis.
 
-For example, if `app-package` depends on `utility-package`, the graph contains:
+---
 
-```text
-app-package ──────► utility-package
+> **Scope note:** RiskGraph is a research/educational prototype. Risk
+> labels are heuristic systemic-dependency indicators, not vulnerability
+> ratings or calibrated probabilities. Cascade results show potential
+> structural reach under the graph assumptions; they do not guarantee
+> that real applications will break.
+
+## Features
+
+-   Collect npm package metadata and dependency declarations.
+-   Collect GitHub Archive activity for a defined UTC window.
+-   Stream ingestion records through Kafka.
+-   Store raw and processed data in RustFS object storage.
+-   Process and transform data with Apache Spark.
+-   Build a directed npm dependency graph and calculate graph metrics
+    with NetworkX.
+-   Generate heuristic package risk scores and categories.
+-   Simulate potential dependency cascade reach from a selected package.
+-   Explore outputs through FastAPI and a Streamlit dashboard.
+
+## Architecture
+
+``` text
+npm Registry ───────┐
+                    ├──> Ingestion ──> Kafka topics
+GitHub Archive ─────┘                    │
+                                         v
+                              RustFS (S3-compatible storage)
+                                         │
+                                         v
+                               Apache Spark processing
+                                         │
+                                         v
+                             Dependency graph + metrics
+                                         │
+                              Risk scoring + cascade
+                                         │
+                              ┌──────────┴──────────┐
+                              v                     v
+                           FastAPI              Streamlit
 ```
 
 The arrow points from the dependent package to the package it uses.
@@ -673,6 +713,16 @@ The project is divided into four presentation workstreams, covering the data pip
 
 **Primary responsibility:** Obtaining source data and making it available to the downstream pipeline.
 
+| Member | Role |
+|---|---|
+| Ansita Singh | Data ingestion — npm registry crawler, GitHub Archive collector, Kafka producer |
+| Sai Madhuri Bodapati | Data storage and processing — RustFS object storage, Apache Spark pipeline |
+| Musfiraa Arif | Graph analytics — dependency graph construction, NetworkX metrics, risk scoring |
+| Kavya Tantuvay | Application and demo — FastAPI REST API, Streamlit dashboard, cascade simulation display |
+
+## License
+
+Add the license selected by your team or course before publishing the repository.
 - Collect npm package metadata and dependency declarations.
 - Collect GitHub Archive data for the defined observation window.
 - Work on ingestion producers and the separation of records into Kafka topics.
